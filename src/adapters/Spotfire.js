@@ -48,8 +48,8 @@ export class SpotfireAdapter {
         tables.forEach((table, tableIdx) => {
              let title = "Spotfire Table " + (tableIdx + 1);
              
-             // Attempt to locate an actual visual title instead of generic fallback
-             const visual = table.closest('.sfc-visual, .sf-element-visual, .sfc-element');
+              // Attempt to locate an actual visual title instead of generic fallback
+             const visual = table.closest('.sfc-visual, .sf-element-visual, .sfc-element, .sfpc-visual');
              if (visual) {
                  const titleEl = visual.querySelector('.sfc-visual-title, .sf-element-visual-title, .sfc-title');
                  if (titleEl && titleEl.innerText.trim() !== '') {
@@ -71,6 +71,64 @@ export class SpotfireAdapter {
                        }
                   });
              });
+        });
+
+        // Fallback 3: Virtualized Coordinate-Based Grids (Flattened Spotfire 10+ Canvases)
+        const gridPanels = documentContext.querySelectorAll('.sfc-visual, .sfpc-visual, .sf-element-visual, .sfc-element, .sfpc-panel');
+        gridPanels.forEach((panel, pIdx) => {
+             // Avoid double-processing if it already had a native table
+             if (panel.querySelector('.sfc-table, .sfpc-table')) return;
+
+             let title = "Virtual Grid " + (pIdx + 1);
+             const titleEl = panel.querySelector('.sfc-visual-title, .sf-element-visual-title, .sfc-title');
+             if (titleEl && titleEl.innerText.trim() !== '') title = titleEl.innerText.trim();
+
+             // Find all absolute child nodes inside this panel that have text
+             const leafNodes = Array.from(panel.querySelectorAll('*')).filter(el => 
+                  el.children.length === 0 && el.innerText && el.innerText.trim().length > 0 && 
+                  !el.classList.contains('sfc-title') && !el.classList.contains('sfc-visual-title') // avoid titles
+             );
+
+             // If there are many floating leaf nodes, it's a virtualized text grid
+             if (leafNodes.length > 5) {
+                 // Map them by bounding box relative to panel
+                 const cells = leafNodes.map(el => {
+                      const rect = el.getBoundingClientRect();
+                      return { text: el.innerText.trim(), x: rect.left, y: rect.top };
+                 });
+                 
+                 // Group rows by Y coordinate within 10px margin
+                 const rowsMap = {};
+                 cells.forEach(c => {
+                      // snap to nearest 10 pixels to group loose columns
+                      const snapY = Math.round(c.y / 10) * 10;
+                      if (!rowsMap[snapY]) rowsMap[snapY] = [];
+                      rowsMap[snapY].push({ text: c.text, x: c.x });
+                 });
+
+                 // Reconstruct Table Mapping
+                 const sortedYVals = Object.keys(rowsMap).sort((a,b) => parseFloat(a) - parseFloat(b));
+                 if (sortedYVals.length >= 2) { 
+                     // Assume highest elements (smallest Y) function as headers
+                     const headerRow = rowsMap[sortedYVals[0]].sort((a,b) => a.x - b.x).map(c => c.text);
+                     
+                     for (let i = 1; i < sortedYVals.length; i++) {
+                          const dataRow = rowsMap[sortedYVals[i]].sort((a,b) => a.x - b.x);
+                          
+                          // Avoid generating records for axes values like '2020', '2021', '0'
+                          if (dataRow.length > 1 || isNaN(dataRow[0]?.text)) {
+                              dataRow.forEach((cData, colIndex) => {
+                                   const hd = headerRow[colIndex] || `Column ${colIndex}`;
+                                   extracted.push({
+                                       "Visual Title": title,
+                                       "Category": hd,
+                                       "Value": cData.text
+                                   });
+                              });
+                          }
+                     }
+                 }
+             }
         });
 
         // Filter out duplicates and system UI elements
