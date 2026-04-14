@@ -9,7 +9,66 @@ export class SpotfireAdapter {
 
     async extract(documentContext) {
         console.log(`[Spotfire Adapter] Engaging extraction sequences.`);
-        // TBD: Hook into dxp-document variables
-        return [];
+        const extracted = [];
+        
+        // Target the primary containers for visuals on Spotfire dashboards
+        const containers = documentContext.querySelectorAll('.sf-element-dialog, .sfc-highlight-root, .sfc-visual, .sfc-element');
+        
+        containers.forEach(container => {
+            // Get all text lines within the container
+            const lines = container.innerText.split('\n')
+                .map(t => t.trim())
+                .filter(t => t.length > 0 && !t.includes('Drag items'));
+            
+            if (lines.length >= 2) {
+                let title = lines[0];
+                let value = lines.slice(1).join(' ');
+                
+                // Heuristic: If the first line contains a value ($ or digits) 
+                // and the second line looks like a label, swap them.
+                if ((lines[0].includes('$') || /\d/.test(lines[0])) && !/\d/.test(lines[1])) {
+                    title = lines[1];
+                    value = lines[0];
+                }
+                
+                // Avoid capturing the main header as a visual data point
+                if (title.length < 50 && value.length < 100) {
+                    extracted.push({
+                        "Visual Title": title,
+                        "Category": "Data Point",
+                        "Value": value
+                    });
+                }
+            }
+        });
+
+        // Fallback for native DOM tables
+        const tables = documentContext.querySelectorAll('.sfc-table');
+        tables.forEach((table, tableIdx) => {
+             const title = "Spotfire Table " + (tableIdx + 1);
+             const cols = Array.from(table.querySelectorAll('.sfc-table-header-cell')).map(c => c.innerText.trim());
+             const rows = Array.from(table.querySelectorAll('.sfc-table-row'));
+             rows.forEach(r => {
+                  const cells = Array.from(r.querySelectorAll('.sfc-table-cell')).map(c => c.innerText.trim());
+                  cells.forEach((val, i) => {
+                       if (cols[i]) {
+                           extracted.push({
+                               "Visual Title": title,
+                               "Category": cols[i],
+                               "Value": val
+                           });
+                       }
+                  });
+             });
+        });
+
+        // Filter out duplicates and system UI elements
+        const seen = new Set();
+        return extracted.filter(item => {
+            const key = `${item["Visual Title"]}|${item["Value"]}`;
+            if (seen.has(key) || item["Visual Title"].includes('Live Offer Monitoring')) return false;
+            seen.add(key);
+            return true;
+        });
     }
 }
