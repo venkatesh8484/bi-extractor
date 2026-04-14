@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "BI Comparison Framework",
+  "version": "1.0.0",
+  "description": "Chrome Extension for BI Report Comparison using MCP & Copilot.",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Assistant"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"]
+    }
+  ]
+}

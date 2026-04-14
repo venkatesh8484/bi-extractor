@@ -1,0 +1,183 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  padding: 16px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 1.1rem;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.statusBadge {
+  font-size: 0.70rem;
+  background: var(--border-color);
+  padding: 4px 8px;
+  border-radius: 12px;
+  max-width: 200px;
+  text-align: right;
+  line-height: 1.2;
+}
+
+.main {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.captureGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #cbd5e1;
+}
+
+.meta {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin: 0;
+  word-break: break-all;
+}
+
+.btn {
+  background: #334155;
+  color: #f8fafc;
+  border: 1px solid #475569;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, transform 0.1s;
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn:hover {
+  background: #475569;
+}
+
+.compareSection {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.btnPrimary {
+  width: 100%;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+  margin-top: 0;
+}
+
+.btnPrimary:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+}
+
+/* Diff Results Styling */
+.resultCard {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid #475569;
+}
+
+.resultHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.resultPill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.pillSuccess {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.pillDanger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.resultMsg {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  margin: 4px 0;
+  line-height: 1.4;
+}
+
+.metricsBox {
+  margin-top: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metricItem {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+}
+
+.metricLabel {
+  color: #94a3b8;
+}
+
+.metricValue {
+  font-weight: 600;
+  color: #f8fafc;
+}
