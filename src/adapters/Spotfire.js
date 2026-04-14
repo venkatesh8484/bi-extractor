@@ -12,7 +12,8 @@ export class SpotfireAdapter {
         const extracted = [];
         
         // Target the primary containers for visuals on Spotfire dashboards
-        const containers = documentContext.querySelectorAll('.sf-element-dialog, .sfc-highlight-root, .sfc-visual, .sfc-element');
+        // Include .sfc-text-area and .sfpc-visual for KPI boxes!
+        const containers = documentContext.querySelectorAll('.sf-element-dialog, .sfc-highlight-root, .sfc-visual, .sfc-element, .sfc-text-area, .sfpc-visual');
         
         containers.forEach(container => {
             // Get all text lines within the container
