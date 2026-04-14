@@ -1,68 +1,106 @@
 export class PowerBIAdapter {
     constructor() {
-        this.name = "Power BI Sub-Fiber Scraper";
+        this.name = "Power BI Recursive Fiber Scraper";
     }
 
     isMatch(url, documentContext) {
-        // Match standard PowerBI domains and check for camelCase visualContainer
         return url.includes('powerbi.com') || url.includes('zoomcharts.com') || documentContext.querySelector('.visual-container, .visualContainer, .cardVisual') !== null;
     }
 
     async extract(documentContext) {
-        console.log("[Power BI Adapter] Engaging Deep React Fiber Scraper...");
+        console.log("[Power BI Adapter] Engaging Deep React Fiber Scraper with Recursive Traversal...");
         const reportData = [];
 
-        // 1. Target both common visual container classes (kebab-case and camelCase)
+        function extractDataFromDataViews(dataViews, title) {
+            let extracted = [];
+            let seenCategories = new Set();
+            
+            dataViews.forEach(dv => {
+                // 1. Array Categories (Bar charts, Line charts, Tables)
+                if (dv && dv.categorical) {
+                    const categories = dv.categorical.categories?.[0]?.values || [];
+                    const valuesArray = dv.categorical.values?.[0]?.values || [];
+                    
+                    if (categories.length > 0 && valuesArray.length > 0) {
+                        for (let i = 0; i < Math.min(categories.length, valuesArray.length); i++) {
+                            const catName = String(categories[i]);
+                            const val = valuesArray[i] !== null ? valuesArray[i] : 'N/A';
+                            // Ensure no duplicate rows per visual
+                            if (!seenCategories.has(catName)) {
+                                seenCategories.add(catName);
+                                extracted.push({
+                                    "Visual Title": title,
+                                    "Category": catName,
+                                    "Value": val
+                                });
+                            }
+                        }
+                    }
+                } 
+                // 2. Single value instances (KPI Cards, Ring Charts)
+                if (dv && dv.single) {
+                    const singleVal = dv.single.value !== null ? dv.single.value : 'N/A';
+                    if (singleVal !== 'N/A') {
+                        extracted.push({
+                            "Visual Title": title,
+                            "Category": "Metric",
+                            "Value": singleVal
+                        });
+                    }
+                }
+            });
+            return extracted;
+        }
+
         const visuals = documentContext.querySelectorAll('.visualContainer, .visual-container');
         visuals.forEach(v => {
             const titleElement = v.querySelector('.visualTitle') || v.getAttribute('aria-label');
             const title = (titleElement && titleElement.innerText) ? titleElement.innerText.trim() : (typeof titleElement === 'string' ? titleElement : 'Advanced Canvas Chart');
             
             try {
-                // Find React internal state key
                 const fiberKey = Object.keys(v).find(k => k.startsWith('__reactFiber'));
                 if (fiberKey) {
-                    let currentFiber = v[fiberKey];
-                    let dataView = null;
+                    const rootFiber = v[fiberKey];
+                    let rawDataViews = new Set();
+                    let seenFibers = new Set();
 
-                    // Traverse up or into immediate children to find dataView 
-                    const fibersToCheck = [
-                        currentFiber, 
-                        currentFiber?.return, 
-                        currentFiber?.child, 
-                        currentFiber?.child?.child,
-                        currentFiber?.child?.memoizedProps?.children?.[0]?._owner
-                    ].filter(Boolean);
-
-                    for (const fiber of fibersToCheck) {
-                        dataView = fiber?.memoizedProps?.visualHost?.dataViews?.[0] || 
-                                   fiber?.memoizedProps?.dataViews?.[0] ||
-                                   fiber?.memoizedProps?.dataView?.[0] ||
-                                   fiber?.stateNode?.props?.dataViews?.[0];
-                        if (dataView) break;
-                    }
-                    
-                    if (dataView && dataView.categorical) {
-                        const categories = dataView.categorical.categories?.[0]?.values || [];
-                        const valuesArray = dataView.categorical.values?.[0]?.values || [];
-                        
-                        if (categories.length > 0 && valuesArray.length > 0) {
-                            for (let i = 0; i < Math.min(categories.length, valuesArray.length); i++) {
-                                reportData.push({
-                                    "Visual Title": title,
-                                    "Category": String(categories[i]),
-                                    "Value": valuesArray[i] !== null ? valuesArray[i] : 'N/A'
-                                });
+                    // Recursive Deep Tree Traversal
+                    function checkProps(props) {
+                        if (!props || typeof props !== 'object') return;
+                        const candidates = [props.dataView, props.dataViews, props.visual?.dataView, props.visualDataView];
+                        for (const cand of candidates) {
+                            if (!cand) continue;
+                            const dvs = Array.isArray(cand) ? cand : [cand];
+                            for (const dv of dvs) {
+                                if (dv && (dv.categorical || dv.single || dv.table)) {
+                                    rawDataViews.add(dv);
+                                }
                             }
                         }
                     }
+
+                    function traverse(f, depth) {
+                        if (!f || depth > 20 || seenFibers.has(f)) return;
+                        seenFibers.add(f);
+                        checkProps(f.memoizedProps);
+                        checkProps(f.pendingProps);
+                        if (f.child) traverse(f.child, depth + 1);
+                        if (f.sibling) traverse(f.sibling, depth + 1);
+                    }
+
+                    // Initiate deep search up to 20 depths down the Fiber tree
+                    traverse(rootFiber, 0);
+
+                    // Compile extracted points
+                    const compiledPoints = extractDataFromDataViews(Array.from(rawDataViews), title);
+                    compiledPoints.forEach(pt => reportData.push(pt));
                 }
             } catch (e) {
                 console.warn("[Power BI Adapter] Failed to traverse React Fiber for visual:", title, e);
             }
         });
 
-        // 2. Extract Standard Simple Number Cards (Fallback)
+        // Fallbacks for Simple Number Cards & Standard Paths
         const cards = documentContext.querySelectorAll('.cardVisual, .small-multiples-grid-cell-content');
         cards.forEach(card => {
             const rawText = card.innerText ? card.innerText.split('\n') : [];
@@ -70,7 +108,6 @@ export class PowerBIAdapter {
             const title = ariaLabel ? ariaLabel.split(' card')[0].trim() : (rawText[0] || 'KPI Card');
             const value = rawText.length > 0 ? rawText[rawText.length - 1].trim() : 'N/A';
             
-            // Only add if we didn't already hit this via the Fiber scraper above to prevent duplicates
             const isDuplicate = reportData.some(row => row['Visual Title'] === title && String(row['Value']) === String(value));
             if (!isDuplicate && title && value && value !== 'N/A') {
                 reportData.push({
@@ -78,21 +115,6 @@ export class PowerBIAdapter {
                     "Category": "Metric",
                     "Value": value
                 });
-            }
-        });
-
-        // 3. Fallback for Publish-To-Web specific simple text cards if aria-labels fail
-        visuals.forEach(visual => {
-            const isDuplicate = reportData.some(row => visual.innerText.includes(String(row['Value'])));
-            if (!isDuplicate && visual.innerText && visual.innerText.split('\n').length <= 3) {
-                const cardValue = visual.innerText.split('\n').filter(t => t.trim().length > 0);
-                if (cardValue.length >= 2) {
-                    reportData.push({
-                        "Visual Title": visual.getAttribute('aria-label') || cardValue[0],
-                        "Category": cardValue[0],
-                        "Value": cardValue[1]
-                    });
-                }
             }
         });
 
