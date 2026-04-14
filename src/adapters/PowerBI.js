@@ -16,7 +16,7 @@ export class PowerBIAdapter {
             let seenCategories = new Set();
             
             dataViews.forEach(dv => {
-                // 1. Array Categories (Bar charts, Line charts, Tables)
+                // 1. Array Categories (Bar charts, Line charts)
                 if (dv && dv.categorical) {
                     const categories = dv.categorical.categories?.[0]?.values || [];
                     const valuesArray = dv.categorical.values?.[0]?.values || [];
@@ -25,7 +25,6 @@ export class PowerBIAdapter {
                         for (let i = 0; i < Math.min(categories.length, valuesArray.length); i++) {
                             const catName = String(categories[i]);
                             const val = valuesArray[i] !== null ? valuesArray[i] : 'N/A';
-                            // Ensure no duplicate rows per visual
                             if (!seenCategories.has(catName)) {
                                 seenCategories.add(catName);
                                 extracted.push({
@@ -47,6 +46,44 @@ export class PowerBIAdapter {
                             "Value": singleVal
                         });
                     }
+                }
+                // 3. Table Layouts (Large grids of data)
+                if (dv && dv.table) {
+                    const columns = (dv.table.columns || []).map(c => c.displayName || "Column");
+                    const rows = dv.table.rows || [];
+                    rows.forEach(row => {
+                        row.forEach((value, i) => {
+                            extracted.push({
+                                "Visual Title": title,
+                                "Category": columns[i] || `Column ${i}`,
+                                "Value": value !== null ? value : ''
+                            });
+                        });
+                    });
+                }
+                // 4. Matrix Layouts (Hierarchical Pivot Tables)
+                if (dv && dv.matrix) {
+                    const valueSources = dv.matrix.valueSources || [];
+                    const walk = (node, rowHeaders = []) => {
+                        if (node.values) {
+                            Object.keys(node.values).forEach(vKey => {
+                                const cellData = node.values[vKey];
+                                const measure = valueSources[vKey];
+                                extracted.push({
+                                    "Visual Title": title,
+                                    "Category": rowHeaders.join(' > ') + (measure ? ` | ${measure.displayName}` : ''),
+                                    "Value": cellData.value !== null ? cellData.value : ''
+                                });
+                            });
+                        }
+                        if (node.children) {
+                            node.children.forEach(child => {
+                                walk(child, [...rowHeaders, child.value]);
+                            });
+                        }
+                    };
+                    const rootChildren = dv.matrix.rows?.root?.children || [];
+                    rootChildren.forEach(child => walk(child, [child.value]));
                 }
             });
             return extracted;
