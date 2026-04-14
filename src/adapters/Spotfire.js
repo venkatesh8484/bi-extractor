@@ -43,8 +43,8 @@ export class SpotfireAdapter {
             }
         });
 
-        // Fallback for native DOM tables (Supports both legacy .sfc and modern .sfpc namespace)
-        const tables = documentContext.querySelectorAll('.sfc-table, .sfpc-table');
+        // Fallback 2: Legacy Native DOM tables (HTML Structural Hierarchy)
+        const tables = documentContext.querySelectorAll('.sfc-table');
         tables.forEach((table, tableIdx) => {
              let title = "Spotfire Table " + (tableIdx + 1);
              
@@ -57,10 +57,10 @@ export class SpotfireAdapter {
                  }
              }
 
-             const cols = Array.from(table.querySelectorAll('.sfc-table-header-cell, .sfpc-table-header-cell')).map(c => c.innerText.trim());
-             const rows = Array.from(table.querySelectorAll('.sfc-table-row, .sfpc-table-row'));
+             const cols = Array.from(table.querySelectorAll('.sfc-table-header-cell')).map(c => c.innerText.trim());
+             const rows = Array.from(table.querySelectorAll('.sfc-table-row'));
              rows.forEach(r => {
-                  const cells = Array.from(r.querySelectorAll('.sfc-table-cell, .sfpc-table-cell')).map(c => c.innerText.trim());
+                  const cells = Array.from(r.querySelectorAll('.sfc-table-cell')).map(c => c.innerText.trim());
                   cells.forEach((val, i) => {
                        if (cols[i]) {
                            extracted.push({
@@ -76,8 +76,8 @@ export class SpotfireAdapter {
         // Fallback 3: Virtualized Coordinate-Based Grids (Flattened Spotfire 10+ Canvases)
         const gridPanels = documentContext.querySelectorAll('.sfc-visual, .sfpc-visual, .sf-element-visual, .sfc-element, .sfpc-panel');
         gridPanels.forEach((panel, pIdx) => {
-             // Avoid double-processing if it already had a native table
-             if (panel.querySelector('.sfc-table, .sfpc-table')) return;
+             // Abort Geometric mapping only if an older Legacy HTML structural table exists (since it was already parsed)
+             if (panel.querySelector('.sfc-table')) return;
 
              let title = "Virtual Grid " + (pIdx + 1);
              const titleEl = panel.querySelector('.sfc-visual-title, .sf-element-visual-title, .sfc-title');
@@ -85,7 +85,7 @@ export class SpotfireAdapter {
 
              // Find all absolute child nodes inside this panel that have text
              const leafNodes = Array.from(panel.querySelectorAll('*')).filter(el => 
-                  el.children.length === 0 && el.innerText && el.innerText.trim().length > 0 && 
+                  el.children.length === 0 && el.textContent && el.textContent.trim().length > 0 && 
                   !el.classList.contains('sfc-title') && !el.classList.contains('sfc-visual-title') // avoid titles
              );
 
@@ -94,14 +94,14 @@ export class SpotfireAdapter {
                  // Map them by bounding box relative to panel
                  const cells = leafNodes.map(el => {
                       const rect = el.getBoundingClientRect();
-                      return { text: el.innerText.trim(), x: rect.left, y: rect.top };
+                      return { text: el.textContent.trim(), x: rect.left, y: rect.top };
                  });
                  
-                 // Group rows by Y coordinate within 10px margin
+                 // Group rows by Y coordinate within 15px margin to accommodate virtualized float drift
                  const rowsMap = {};
                  cells.forEach(c => {
-                      // snap to nearest 10 pixels to group loose columns
-                      const snapY = Math.round(c.y / 10) * 10;
+                      // snap to nearest 15 pixels to group loose columns
+                      const snapY = Math.round(c.y / 15) * 15;
                       if (!rowsMap[snapY]) rowsMap[snapY] = [];
                       rowsMap[snapY].push({ text: c.text, x: c.x });
                  });
