@@ -156,26 +156,55 @@ export class PowerBIAdapter {
         });
         // 3. Ultimate Fallback for embedded iframe specific simple text cards if Fiber + DOM fails completely.
         visuals.forEach(visual => {
-            try {
-                if (visual.innerText && visual.innerText.split('\n').length <= 5) {
-                    const cardValue = visual.innerText.split('\n').filter(t => t.trim().length > 0);
-                    // Filter out UI elements
-                    const cleaned = cardValue.filter(t => !t.includes('Reset Filter') && !t.includes('Summary'));
-                    if (cleaned.length >= 2) {
-                        const title = visual.getAttribute('aria-label') || cleaned[0];
-                        const val = cleaned[cleaned.length - 1];
-                        
-                        const isDuplicate = reportData.some(row => row['Visual Title'] === title && String(row['Value']) === String(val));
-                        if (!isDuplicate && val !== title) {
-                            reportData.push({
-                                "Visual Title": title,
-                                "Category": cleaned[0],
-                                "Value": val
-                            });
+            const titleElement = visual.querySelector('.visualTitle') || visual.getAttribute('aria-label');
+            const title = (titleElement && titleElement.innerText) ? titleElement.innerText.trim() : (typeof titleElement === 'string' ? titleElement : 'Dashboard Matrix');
+            
+            // Check if it's a natively rendered Table in the DOM (bypassing React Fiber)
+            const pivotTable = visual.querySelector('.pivotTable');
+            if (pivotTable) {
+                try {
+                    const headers = Array.from(pivotTable.querySelectorAll('.columnHeaders .pivotTableCellWrap')).map(h => h.innerText.trim());
+                    const cells = Array.from(pivotTable.querySelectorAll('.bodyCells .pivotTableCellWrap'));
+                    
+                    if (headers.length > 0 && cells.length > 0) {
+                        for (let i = 0; i < cells.length; i++) {
+                            const colIndex = i % headers.length;
+                            const cellValue = cells[i].innerText.trim();
+                            // Optional: ignore empty row cells or pagination blobs
+                            if (cellValue.length > 0) {
+                                const isDuplicate = reportData.some(row => row['Visual Title'] === title && row['Category'] === headers[colIndex] && row['Value'] === cellValue);
+                                if (!isDuplicate) {
+                                    reportData.push({
+                                        "Visual Title": title,
+                                        "Category": headers[colIndex],
+                                        "Value": cellValue
+                                    });
+                                }
+                            }
                         }
                     }
+                } catch(e) {
+                    console.warn("DOM Matrix Extraction Failed", e);
                 }
-            } catch(e) {}
+            } else {
+                // Otherwise try text card fallback
+                try {
+                    if (visual.innerText && visual.innerText.split('\n').length <= 5) {
+                        const cardValue = visual.innerText.split('\n').filter(t => t.trim().length > 0 && !t.includes('Reset Filter') && !t.includes('Summary'));
+                        if (cardValue.length >= 2) {
+                            const val = cardValue[cardValue.length - 1];
+                            const isDuplicate = reportData.some(row => row['Visual Title'] === title && String(row['Value']) === String(val));
+                            if (!isDuplicate && val !== title) {
+                                reportData.push({
+                                    "Visual Title": title,
+                                    "Category": cardValue[0],
+                                    "Value": val
+                                });
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }
         });
 
         // 4. Ensure we don't return 0 if there was absolute catastrophic failure (Fallback Generic)
