@@ -4,33 +4,42 @@ export class PowerBIAdapter {
     }
 
     isMatch(url, documentContext) {
-        return url.includes('powerbi.com') || url.includes('zoomcharts.com') || documentContext.querySelector('visual-container') !== null || documentContext.querySelector('.cardVisual') !== null;
+        // Match standard PowerBI domains and check for camelCase visualContainer
+        return url.includes('powerbi.com') || url.includes('zoomcharts.com') || documentContext.querySelector('.visual-container, .visualContainer, .cardVisual') !== null;
     }
 
     async extract(documentContext) {
         console.log("[Power BI Adapter] Engaging Deep React Fiber Scraper...");
         const reportData = [];
 
-        // 1. Extract Deep Canvas Data by traversing the React internal memory state
-        const visuals = documentContext.querySelectorAll('.visual-container');
+        // 1. Target both common visual container classes (kebab-case and camelCase)
+        const visuals = documentContext.querySelectorAll('.visualContainer, .visual-container');
         visuals.forEach(v => {
-            const titleElement = v.querySelector('.visualTitle');
-            const title = titleElement ? titleElement.innerText.trim() : 'Advanced Canvas Chart';
+            const titleElement = v.querySelector('.visualTitle') || v.getAttribute('aria-label');
+            const title = (titleElement && titleElement.innerText) ? titleElement.innerText.trim() : (typeof titleElement === 'string' ? titleElement : 'Advanced Canvas Chart');
             
             try {
-                // Find React 16/17/18 internal state key
+                // Find React internal state key
                 const fiberKey = Object.keys(v).find(k => k.startsWith('__reactFiber'));
                 if (fiberKey) {
                     let currentFiber = v[fiberKey];
                     let dataView = null;
 
-                    // Traverse up the fiber tree up to 5 levels to find the injected dataView prop
-                    for(let i=0; i<5 && currentFiber; i++) {
-                        dataView = currentFiber?.memoizedProps?.visualHost?.dataViews?.[0] || 
-                                   currentFiber?.memoizedProps?.dataViews?.[0] ||
-                                   currentFiber?.stateNode?.props?.dataViews?.[0];
+                    // Traverse up or into immediate children to find dataView 
+                    const fibersToCheck = [
+                        currentFiber, 
+                        currentFiber?.return, 
+                        currentFiber?.child, 
+                        currentFiber?.child?.child,
+                        currentFiber?.child?.memoizedProps?.children?.[0]?._owner
+                    ].filter(Boolean);
+
+                    for (const fiber of fibersToCheck) {
+                        dataView = fiber?.memoizedProps?.visualHost?.dataViews?.[0] || 
+                                   fiber?.memoizedProps?.dataViews?.[0] ||
+                                   fiber?.memoizedProps?.dataView?.[0] ||
+                                   fiber?.stateNode?.props?.dataViews?.[0];
                         if (dataView) break;
-                        currentFiber = currentFiber.return;
                     }
                     
                     if (dataView && dataView.categorical) {
@@ -62,7 +71,7 @@ export class PowerBIAdapter {
             const value = rawText.length > 0 ? rawText[rawText.length - 1].trim() : 'N/A';
             
             // Only add if we didn't already hit this via the Fiber scraper above to prevent duplicates
-            const isDuplicate = reportData.some(row => row['Visual Title'] === title && row['Value'] === value);
+            const isDuplicate = reportData.some(row => row['Visual Title'] === title && String(row['Value']) === String(value));
             if (!isDuplicate && title && value && value !== 'N/A') {
                 reportData.push({
                     "Visual Title": title,
@@ -72,29 +81,19 @@ export class PowerBIAdapter {
             }
         });
 
-        // 3. Extract basic SVG Paths (Old method fallback)
-        visuals.forEach(container => {
-            const titleElement = container.querySelector('.visualTitle');
-            const title = titleElement ? titleElement.innerText.trim() : 'Graph';
-            
-            const dataPoints = container.querySelectorAll('svg path[aria-label], svg rect[aria-label]');
-            dataPoints.forEach(pt => {
-                const label = pt.getAttribute('aria-label');
-                if (label) {
-                    const parts = label.split(',');
-                    const category = parts[0]?.trim() || "Item";
-                    const value = (parts[1] || "").trim(); 
-                    
-                    const isDuplicate = reportData.some(row => row['Visual Title'] === title && row['Category'] === category);
-                    if (!isDuplicate) {
-                        reportData.push({
-                            "Visual Title": title,
-                            "Category": category,
-                            "Value": value
-                        });
-                    }
+        // 3. Fallback for Publish-To-Web specific simple text cards if aria-labels fail
+        visuals.forEach(visual => {
+            const isDuplicate = reportData.some(row => visual.innerText.includes(String(row['Value'])));
+            if (!isDuplicate && visual.innerText && visual.innerText.split('\n').length <= 3) {
+                const cardValue = visual.innerText.split('\n').filter(t => t.trim().length > 0);
+                if (cardValue.length >= 2) {
+                    reportData.push({
+                        "Visual Title": visual.getAttribute('aria-label') || cardValue[0],
+                        "Category": cardValue[0],
+                        "Value": cardValue[1]
+                    });
                 }
-            });
+            }
         });
 
         return reportData;
