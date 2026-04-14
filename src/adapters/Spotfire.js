@@ -43,14 +43,24 @@ export class SpotfireAdapter {
             }
         });
 
-        // Fallback for native DOM tables
-        const tables = documentContext.querySelectorAll('.sfc-table');
+        // Fallback for native DOM tables (Supports both legacy .sfc and modern .sfpc namespace)
+        const tables = documentContext.querySelectorAll('.sfc-table, .sfpc-table');
         tables.forEach((table, tableIdx) => {
-             const title = "Spotfire Table " + (tableIdx + 1);
-             const cols = Array.from(table.querySelectorAll('.sfc-table-header-cell')).map(c => c.innerText.trim());
-             const rows = Array.from(table.querySelectorAll('.sfc-table-row'));
+             let title = "Spotfire Table " + (tableIdx + 1);
+             
+             // Attempt to locate an actual visual title instead of generic fallback
+             const visual = table.closest('.sfc-visual, .sf-element-visual, .sfc-element');
+             if (visual) {
+                 const titleEl = visual.querySelector('.sfc-visual-title, .sf-element-visual-title, .sfc-title');
+                 if (titleEl && titleEl.innerText.trim() !== '') {
+                     title = titleEl.innerText.trim();
+                 }
+             }
+
+             const cols = Array.from(table.querySelectorAll('.sfc-table-header-cell, .sfpc-table-header-cell')).map(c => c.innerText.trim());
+             const rows = Array.from(table.querySelectorAll('.sfc-table-row, .sfpc-table-row'));
              rows.forEach(r => {
-                  const cells = Array.from(r.querySelectorAll('.sfc-table-cell')).map(c => c.innerText.trim());
+                  const cells = Array.from(r.querySelectorAll('.sfc-table-cell, .sfpc-table-cell')).map(c => c.innerText.trim());
                   cells.forEach((val, i) => {
                        if (cols[i]) {
                            extracted.push({
