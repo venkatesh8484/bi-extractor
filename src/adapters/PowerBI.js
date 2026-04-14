@@ -159,29 +159,55 @@ export class PowerBIAdapter {
             const titleElement = visual.querySelector('.visualTitle') || visual.getAttribute('aria-label');
             const title = (titleElement && titleElement.innerText) ? titleElement.innerText.trim() : (typeof titleElement === 'string' ? titleElement : 'Dashboard Matrix');
             
-            // Check if it's a natively rendered Table in the DOM (bypassing React Fiber)
-            const pivotTable = visual.querySelector('.pivotTable');
-            if (pivotTable) {
+            // Check if it's a natively rendered Table/Tablix in the DOM (bypassing React Fiber entirely)
+            const gridCanvas = visual.querySelector('.pivotTable, .tablixCanvas');
+            if (gridCanvas) {
                 try {
-                    const headers = Array.from(pivotTable.querySelectorAll('.columnHeaders .pivotTableCellWrap')).map(h => h.innerText.trim());
-                    const cells = Array.from(pivotTable.querySelectorAll('.bodyCells .pivotTableCellWrap'));
+                    // Pull Headers (Support both grid types)
+                    const headerElements = Array.from(gridCanvas.querySelectorAll('.columnHeader, .columnHeaders .pivotTableCellWrap'));
+                    const headers = headerElements.map(h => h.innerText.trim()).filter(h => h !== "");
                     
-                    if (headers.length > 0 && cells.length > 0) {
-                        for (let i = 0; i < cells.length; i++) {
-                            const colIndex = i % headers.length;
-                            const cellValue = cells[i].innerText.trim();
-                            // Optional: ignore empty row cells or pagination blobs
-                            if (cellValue.length > 0) {
-                                const isDuplicate = reportData.some(row => row['Visual Title'] === title && row['Category'] === headers[colIndex] && row['Value'] === cellValue);
-                                if (!isDuplicate) {
-                                    reportData.push({
-                                        "Visual Title": title,
-                                        "Category": headers[colIndex],
-                                        "Value": cellValue
-                                    });
+                    // Pull Body Cells (Support both grid types)
+                    const cellElements = Array.from(gridCanvas.querySelectorAll('.mid-viewport .tableCell, .mid-viewport .tablixCell, .bodyCells .pivotTableCellWrap'));
+                    
+                    if (headers.length > 0 && cellElements.length > 0) {
+                        // Group cells by their top position to perfectly reconstruct rows regardless of DOM order
+                        const rowsMap = {};
+                        cellElements.forEach(cell => {
+                            // Find absolute vertical placement
+                            const top = cell.offsetTop || parseInt(cell.style.top) || 0;
+                            if (!rowsMap[top]) rowsMap[top] = [];
+                            
+                            // Find absolute horizontal placement
+                            const left = cell.offsetLeft || parseInt(cell.style.left) || 0;
+                            rowsMap[top].push({
+                                left: left,
+                                text: cell.innerText.trim()
+                            });
+                        });
+
+                        // Sort vertically, then horizontally
+                        const sortedRowKeys = Object.keys(rowsMap).sort((a, b) => parseFloat(a) - parseFloat(b));
+                        sortedRowKeys.forEach(key => {
+                            const rowCells = rowsMap[key].sort((a, b) => a.left - b.left);
+                            
+                            // Extract to payload mapped to headers
+                            rowCells.forEach((cObj, i) => {
+                                const catHeader = headers[i] || `Column ${i}`;
+                                const cellValue = cObj.text;
+                                
+                                if (cellValue.length > 0) {
+                                    const isDuplicate = reportData.some(row => row['Visual Title'] === title && row['Category'] === catHeader && row['Value'] === cellValue);
+                                    if (!isDuplicate) {
+                                        reportData.push({
+                                            "Visual Title": title,
+                                            "Category": catHeader,
+                                            "Value": cellValue
+                                        });
+                                    }
                                 }
-                            }
-                        }
+                            });
+                        });
                     }
                 } catch(e) {
                     console.warn("DOM Matrix Extraction Failed", e);
